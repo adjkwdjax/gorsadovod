@@ -1,3 +1,62 @@
+## быстрый запуск
+
+### вариант 1: через docker (рекомендуется)
+
+1. в корне проекта запускаем:
+
+```bash
+docker compose up --build
+```
+
+что произойдет:
+- соберется фронт и сгенерируется статика в папку frontend/out
+- backend применит миграции
+- backend запустится на http://localhost:8000
+
+полезные команды docker:
+- `docker compose up --build` - собираем образы и запускаем все сервисы
+- `docker compose up` - запускаем без пересборки
+- `docker compose down` - останавливаем и удаляем контейнеры
+- `docker compose logs -f backend` - смотрим логи backend в реальном времени
+- `docker compose run --rm backend python manage.py migrate` - запускаем миграции вручную
+
+### вариант 2: локально без docker
+
+frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+- `npm run build` - собираем next и получаем статический экспорт в папку frontend/out
+
+backend:
+
+```bash
+cd backend
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
+
+проверка:
+- api: http://localhost:8000/api/ping
+- фронт отдается через django: http://localhost:8000
+
+### что именно запускается в docker
+
+- сервис frontend-build:
+    - команда: `npm ci --include=optional && npm run build`
+    - что делает: ставит зависимости и собирает статику в frontend/out
+
+- сервис backend:
+    - команда: `python manage.py migrate && python manage.py runserver 0.0.0.0:8000`
+    - что делает: обновляет базу и поднимает django
+    - порт: `8000:8000`
+    - дополнительно: подключает frontend/out как read-only, чтобы backend раздавал фронт
+
 # структура проекта
 
 этот файл про то, где что лежит и зачем это нужно
