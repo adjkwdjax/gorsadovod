@@ -20,24 +20,46 @@ export default function ForumPage() {
   const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
-    Promise.allSettled([forumService.getTopics(), forumService.getNotifications()])
-      .then((results) => {
-        const topicsResult = results[0];
-        const notificationsResult = results[1];
+    const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('auth-token'));
+    let active = true;
 
-        if (topicsResult.status === 'fulfilled') {
-          setTopics(topicsResult.value);
+    async function loadData() {
+      try {
+        const topicsData = await forumService.getTopics();
+        if (active) {
+          setTopics(topicsData);
         }
+      } catch {
+        if (active) {
+          setTopics([]);
+        }
+      }
 
-        if (notificationsResult.status === 'fulfilled') {
-          setNotifications(notificationsResult.value);
-        } else {
-          setNotifications([]);
+      if (hasToken) {
+        try {
+          const notificationsData = await forumService.getNotifications();
+          if (active) {
+            setNotifications(notificationsData);
+          }
+        } catch {
+          if (active) {
+            setNotifications([]);
+          }
         }
-      })
-      .finally(() => {
+      } else if (active) {
+        setNotifications([]);
+      }
+
+      if (active) {
         setLoading(false);
-      });
+      }
+    }
+
+    loadData();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const formatDate = (dateString: string) => {

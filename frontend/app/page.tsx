@@ -1,19 +1,32 @@
+"use client";
+
 import Link from 'next/link';
 import { Leaf, Users, MapPin, CalendarDays, ArrowRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { blogService } from '@/services/api';
 import { BlogPost } from '@/types/api';
 
-async function getLatestPosts(): Promise<BlogPost[]> {
-  try {
-    const posts = await blogService.getPosts();
-    return posts.slice(0, 2);
-  } catch {
-    return [];
-  }
-}
+export default function HomePage() {
+  const [latestPosts, setLatestPosts] = useState<BlogPost[]>([]);
 
-export default async function HomePage() {
-  const latestPosts = await getLatestPosts();
+  useEffect(() => {
+    let active = true;
+
+    blogService
+      .getPosts()
+      .then((posts) => {
+        if (!active) return;
+        setLatestPosts(posts.slice(0, 2));
+      })
+      .catch(() => {
+        if (!active) return;
+        setLatestPosts([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-12">
