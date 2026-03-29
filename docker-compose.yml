@@ -1,15 +1,6 @@
 name: gor-sad
 
 services:
-  frontend-build:
-    image: node:20-bookworm-slim
-    container_name: gor-sad-frontend-build
-    working_dir: /frontend
-    command: sh -c "npm ci --include=optional && npm run build"
-    volumes:
-      - ./frontend:/frontend
-    restart: "no"
-
   backend:
     build:
       context: ./backend
@@ -21,6 +12,3 @@ services:
       - ./frontend/out:/frontend/out:ro
     ports:
       - "8000:8000" # Запуск Django на порту 8000
-    depends_on:
-      frontend-build:
-        condition: service_completed_successfully

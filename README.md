@@ -2,6 +2,9 @@
 
 ### вариант 1: через docker (рекомендуется)
 
+перед запуском важно:
+- папка `frontend/out` должна быть уже собрана заранее
+
 1. в корне проекта запускаем:
 
 ```bash
@@ -9,12 +12,12 @@ docker compose up --build
 ```
 
 что произойдет:
-- соберется фронт и сгенерируется статика в папку frontend/out
 - backend применит миграции
 - backend запустится на http://localhost:8000
+- backend будет раздавать уже готовую статику из frontend/out
 
 полезные команды docker:
-- `docker compose up --build` - собираем образы и запускаем все сервисы
+- `docker compose up --build` - пересобираем backend-образ и запускаем
 - `docker compose up` - запускаем без пересборки
 - `docker compose down` - останавливаем и удаляем контейнеры
 - `docker compose logs -f backend` - смотрим логи backend в реальном времени
@@ -47,15 +50,11 @@ python manage.py runserver 0.0.0.0:8000
 
 ### что именно запускается в docker
 
-- сервис frontend-build:
-    - команда: `npm ci --include=optional && npm run build`
-    - что делает: ставит зависимости и собирает статику в frontend/out
-
 - сервис backend:
     - команда: `python manage.py migrate && python manage.py runserver 0.0.0.0:8000`
     - что делает: обновляет базу и поднимает django
     - порт: `8000:8000`
-    - дополнительно: подключает frontend/out как read-only, чтобы backend раздавал фронт
+    - дополнительно: подключает frontend/out как read-only, чтобы backend раздавал уже заранее собранный фронт
 
 # структура проекта
 
@@ -65,7 +64,7 @@ python manage.py runserver 0.0.0.0:8000
 
 ```text
 проект-гор-сад/
-|-- docker-compose.yml         # тут поднимаем сразу backend и frontend в докере
+|-- docker-compose.yml         # тут поднимаем backend в докере (фронт берется из заранее собранного frontend/out)
 |-- backend/                   # тут сервер и все api
 `-- frontend/                  # тут сайт, страницы и работа с api
 ```
