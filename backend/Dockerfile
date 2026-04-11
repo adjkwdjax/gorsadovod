@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py makemigrations api && python manage.py migrate && (python manage.py shell -c \"from django.contrib.auth import get_user_model; import sys; sys.exit(0 if get_user_model().objects.filter(is_superuser=True).exists() else 1)\" || python manage.py createsuperuser) && python manage.py runserver 0.0.0.0:8000"]
+CMD ["sh", "-c", "set -e; echo '[backend] makemigrations...'; python manage.py makemigrations api; echo '[backend] migrate...'; python manage.py migrate; echo '[backend] checking superuser...'; if python -c \"import os, sys; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings'); import django; django.setup(); from django.contrib.auth import get_user_model; sys.exit(0 if get_user_model().objects.filter(is_superuser=True).exists() else 1)\"; then echo '[backend] superuser exists, skip createsuperuser'; else echo '[backend] no superuser found, starting createsuperuser'; python manage.py createsuperuser; fi; echo '[backend] runserver...'; python manage.py runserver 0.0.0.0:8000"]
