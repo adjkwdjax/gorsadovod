@@ -1,4 +1,4 @@
-import { AuthResponse, BlogPost, Club, ClubDetail, DiaryPlant, DiaryPlantDetail, DiaryPlantEntry, Dialog, ForumNotification, ForumReply, ForumTopic, MapLocation, MarketplaceAd, Message, TradeExchange, TradeReview, User } from '@/types/api';
+import { AuthResponse, BlogPost, Club, ClubDetail, CreateBlogPostPayload, DiaryPlant, DiaryPlantDetail, DiaryPlantEntry, Dialog, ForumNotification, ForumReply, ForumTopic, MapLocation, MarketplaceAd, Message, TradeExchange, TradeReview, User } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -93,6 +93,12 @@ export const blogService = {
   },
   getPost: async (slug: string): Promise<BlogPost> => {
     return fetchApi<BlogPost>(`/articles/${slug}/`);
+  },
+  createPost: async (payload: CreateBlogPostPayload): Promise<BlogPost> => {
+    return fetchApi<BlogPost>('/articles/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 };
 

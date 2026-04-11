@@ -18,11 +18,20 @@ export interface BlogPost {
   title: string;
   excerpt: string;
   content: string;
-  authorId: string;
+  authorId?: string | null;
   authorName: string;
   createdAt: string;
   imageUrl?: string;
   tags: string[];
+}
+
+export interface CreateBlogPostPayload {
+  title: string;
+  content: string;
+  excerpt?: string;
+  imageUrl?: string;
+  authorName?: string;
+  tags?: string[];
 }
 
 export interface ForumTopic {

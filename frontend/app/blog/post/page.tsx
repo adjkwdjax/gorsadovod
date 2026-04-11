@@ -103,9 +103,13 @@ export default function BlogPostPage() {
                 <User className="h-5 w-5" />
               </div>
               <div>
-                <Link href={`/profile?id=${post.authorId}`} className="font-medium text-stone-900 hover:text-emerald-700 transition-colors">
-                  {post.authorName}
-                </Link>
+                {post.authorId ? (
+                  <Link href={`/profile?id=${post.authorId}`} className="font-medium text-stone-900 hover:text-emerald-700 transition-colors">
+                    {post.authorName}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-stone-900">{post.authorName}</span>
+                )}
                 <p className="text-sm">Автор</p>
               </div>
             </div>

@@ -24,7 +24,10 @@ class Article(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="articles",
+        null=True,
+        blank=True,
     )
+    author_name = models.CharField(max_length=120, default="Гость")
     tags = models.JSONField(default=list, blank=True)
     image_url = models.URLField(blank=True)
     is_published = models.BooleanField(default=True)

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from django.contrib.auth import authenticate, get_user_model, login as django_login, logout as django_logout
 from django.contrib.sessions.models import Session
 from django.utils import timezone
+from django.utils.text import slugify
 from django.shortcuts import get_object_or_404
 from django.db.models import Avg, Count, Q
 from datetime import date
@@ -295,6 +296,42 @@ def _recalculate_user_rating(user):
     profile.save(update_fields=["rate"])
 
 
+def _article_payload(article):
+    tags = article.tags if isinstance(article.tags, list) else []
+    author_name = (article.author_name or "").strip()
+
+    if not author_name and article.author:
+        author_name = article.author.get_full_name().strip() or article.author.get_username()
+
+    if not author_name:
+        author_name = "Гость"
+
+    return {
+        "id": article.slug,
+        "title": article.title,
+        "excerpt": article.excerpt,
+        "content": article.content,
+        "authorId": str(article.author_id) if article.author_id else None,
+        "authorName": author_name,
+        "createdAt": article.created_at.isoformat(),
+        "imageUrl": article.image_url or None,
+        "tags": tags,
+    }
+
+
+def _generate_article_slug(title):
+    base = slugify(title)[:200] or f"article-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+    slug = base
+    index = 2
+
+    while Article.objects.filter(slug=slug).exists():
+        suffix = f"-{index}"
+        slug = f"{base[:220 - len(suffix)]}{suffix}"
+        index += 1
+
+    return slug
+
+
 @api_view(["GET"])
 @renderer_classes([JSONRenderer])
 def ping(request):
@@ -448,27 +485,53 @@ def profile_reviews(request, pk):
     return Response([_trade_review_payload(review) for review in reviews])
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 @renderer_classes([JSONRenderer])
 def articles_list(request):
-    articles = Article.objects.filter(is_published=True).select_related("author")
+    if request.method == "GET":
+        articles = Article.objects.filter(is_published=True).select_related("author")
+        return Response([_article_payload(article) for article in articles])
 
-    results = [
-        {
-            "id": article.slug,
-            "title": article.title,
-            "excerpt": article.excerpt,
-            "content": article.content,
-            "authorId": str(article.author_id),
-            "authorName": article.author.get_full_name().strip() or article.author.get_username(),
-            "createdAt": article.created_at.isoformat(),
-            "imageUrl": article.image_url or None,
-            "tags": article.tags if isinstance(article.tags, list) else [],
-        }
-        for article in articles
-    ]
+    title = str(request.data.get("title") or "").strip()
+    content = str(request.data.get("content") or "").strip()
+    excerpt = str(request.data.get("excerpt") or "").strip()
+    image_url = str(request.data.get("imageUrl") or request.data.get("image_url") or "").strip()
+    raw_tags = request.data.get("tags")
+    requested_author_name = str(request.data.get("authorName") or "").strip()
 
-    return Response(results)
+    if not title:
+        return Response({"detail": "Title is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not content:
+        return Response({"detail": "Content is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    tags = []
+    if isinstance(raw_tags, list):
+        tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+    elif isinstance(raw_tags, str):
+        tags = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
+
+    current_user = _resolve_request_user(request)
+    author = current_user if current_user and current_user.is_authenticated else None
+
+    if author:
+        author_name = author.get_full_name().strip() or author.get_username()
+    else:
+        author_name = requested_author_name or "Гость"
+
+    article = Article.objects.create(
+        title=title,
+        slug=_generate_article_slug(title),
+        excerpt=excerpt or content[:220],
+        content=content,
+        author=author,
+        author_name=author_name,
+        tags=tags,
+        image_url=image_url,
+        is_published=True,
+    )
+
+    return Response(_article_payload(article), status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET"])
@@ -479,19 +542,7 @@ def article_detail(request, slug):
         slug=slug,
     )
 
-    return Response(
-        {
-            "id": article.slug,
-            "title": article.title,
-            "excerpt": article.excerpt,
-            "content": article.content,
-            "authorId": str(article.author_id),
-            "authorName": article.author.get_full_name().strip() or article.author.get_username(),
-            "createdAt": article.created_at.isoformat(),
-            "imageUrl": article.image_url or None,
-            "tags": article.tags if isinstance(article.tags, list) else [],
-        }
-    )
+    return Response(_article_payload(article))
 
 
 @api_view(["GET"])

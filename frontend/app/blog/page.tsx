@@ -3,15 +3,28 @@
 import { useEffect, useState } from 'react';
 import { blogService } from '@/services/api';
 import { BlogPost } from '@/types/api';
-import { Search, Calendar, User } from 'lucide-react';
+import { Search, Calendar, User, Plus, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/auth';
 
 export default function BlogPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [newPost, setNewPost] = useState({
+    title: '',
+    excerpt: '',
+    content: '',
+    imageUrl: '',
+    tags: '',
+    authorName: '',
+  });
 
   const router = useRouter();
+  const { user, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
     blogService.getPosts().then((data) => {
@@ -19,6 +32,12 @@ export default function BlogPage() {
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && user?.username) {
+      setNewPost((prev) => ({ ...prev, authorName: user.username }));
+    }
+  }, [isAuthenticated, user]);
 
   const formatDate = (dateString: string) => {
     return new Intl.DateTimeFormat('ru-RU', {
@@ -37,6 +56,51 @@ export default function BlogPage() {
 
     return titleMatch || tagsMatch;
   });
+
+  const handleCreatePost = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreateError('');
+
+    if (!newPost.title.trim() || !newPost.content.trim()) {
+      setCreateError('Заполните заголовок и текст статьи.');
+      return;
+    }
+
+    if (!isAuthenticated && !newPost.authorName.trim()) {
+      setCreateError('Укажите ваше имя автора.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const created = await blogService.createPost({
+        title: newPost.title.trim(),
+        content: newPost.content.trim(),
+        excerpt: newPost.excerpt.trim(),
+        imageUrl: newPost.imageUrl.trim(),
+        authorName: isAuthenticated ? undefined : newPost.authorName.trim(),
+        tags: newPost.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      });
+
+      setPosts((prev) => [created, ...prev]);
+      setNewPost((prev) => ({
+        ...prev,
+        title: '',
+        excerpt: '',
+        content: '',
+        imageUrl: '',
+        tags: '',
+      }));
+      setIsCreateOpen(false);
+    } catch {
+      setCreateError('Не удалось создать статью. Попробуйте еще раз.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -60,6 +124,106 @@ export default function BlogPage() {
         </div>
       </div>
 
+      <section className="rounded-2xl border border-stone-200 bg-white p-5 md:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-stone-900">Предложить статью</h2>
+            <p className="text-sm text-stone-600">
+              Публикация доступна всем. Для гостей достаточно указать имя автора.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsCreateOpen((prev) => !prev)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            {isCreateOpen ? 'Свернуть форму' : 'Создать статью'}
+          </button>
+        </div>
+
+        {isCreateOpen && (
+          <form onSubmit={handleCreatePost} className="grid gap-4">
+            {!isAuthenticated && (
+              <label className="grid gap-2 text-sm text-stone-700">
+                Имя автора
+                <input
+                  value={newPost.authorName}
+                  onChange={(event) => setNewPost((prev) => ({ ...prev, authorName: event.target.value }))}
+                  className="rounded-xl border border-stone-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Например: Мария"
+                />
+              </label>
+            )}
+
+            <label className="grid gap-2 text-sm text-stone-700">
+              Заголовок
+              <input
+                value={newPost.title}
+                onChange={(event) => setNewPost((prev) => ({ ...prev, title: event.target.value }))}
+                className="rounded-xl border border-stone-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="О чем статья"
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm text-stone-700">
+              Краткое описание
+              <textarea
+                value={newPost.excerpt}
+                onChange={(event) => setNewPost((prev) => ({ ...prev, excerpt: event.target.value }))}
+                className="min-h-20 rounded-xl border border-stone-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Короткий анонс статьи"
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm text-stone-700">
+              Текст статьи
+              <textarea
+                value={newPost.content}
+                onChange={(event) => setNewPost((prev) => ({ ...prev, content: event.target.value }))}
+                className="min-h-32 rounded-xl border border-stone-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Полный текст"
+              />
+            </label>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <label className="grid gap-2 text-sm text-stone-700">
+                Теги (через запятую)
+                <input
+                  value={newPost.tags}
+                  onChange={(event) => setNewPost((prev) => ({ ...prev, tags: event.target.value }))}
+                  className="rounded-xl border border-stone-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="город, урожай, рассада"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm text-stone-700">
+                URL изображения
+                <input
+                  value={newPost.imageUrl}
+                  onChange={(event) => setNewPost((prev) => ({ ...prev, imageUrl: event.target.value }))}
+                  className="rounded-xl border border-stone-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="https://..."
+                />
+              </label>
+            </div>
+
+            {createError && (
+              <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-white hover:bg-stone-800 disabled:opacity-60"
+            >
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Опубликовать
+            </button>
+          </form>
+        )}
+      </section>
+
       {loading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
@@ -78,7 +242,7 @@ export default function BlogPage() {
             }} className="cursor-pointer border-transparent hover:border-gray-300 bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
               <div className="aspect-video bg-stone-100 relative">
                 <img 
-                  src={post.imageUrl} 
+                  src={post.imageUrl || `https://picsum.photos/seed/blog${post.id}/1200/600`} 
                   alt={post.title}
                   className="object-cover w-full h-full"
                 />
@@ -101,8 +265,9 @@ export default function BlogPage() {
                   <div className="flex items-center gap-1.5">
                     <User className="h-4 w-4" />
                     <span
-                      className="hover:text-emerald-700 transition-colors"
+                      className={post.authorId ? 'hover:text-emerald-700 transition-colors' : ''}
                       onClick={(event) => {
+                        if (!post.authorId) return;
                         event.stopPropagation();
                         router.push(`/profile?id=${post.authorId}`);
                       }}
