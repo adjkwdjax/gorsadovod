@@ -52,29 +52,67 @@ export default function MessagesPage() {
     }
   }, [selectedUserId]);
 
-  const loadDialogs = async () => {
+  const loadDialogs = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       const data = await messageService.getDialogs();
       setDialogs(data);
     } catch (error) {
       console.error('Failed to load dialogs:', error);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadMessages = async (userId: string) => {
+  const loadMessages = async (userId: string, silent = false) => {
     try {
-      setMessageLoading(true);
+      if (!silent) {
+        setMessageLoading(true);
+      }
       const data = await messageService.getMessages(userId);
       setMessages(data);
     } catch (error) {
       console.error('Failed to load messages:', error);
     } finally {
-      setMessageLoading(false);
+      if (!silent) {
+        setMessageLoading(false);
+      }
     }
   };
+
+  // Background refresh for dialogs without visible loading state.
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const dialogsTimer = window.setInterval(() => {
+      loadDialogs(true);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(dialogsTimer);
+    };
+  }, [user]);
+
+  // Background refresh for the currently opened chat.
+  useEffect(() => {
+    if (!user || !selectedUserId) {
+      return;
+    }
+
+    const messagesTimer = window.setInterval(() => {
+      loadMessages(selectedUserId, true);
+    }, 2000);
+
+    return () => {
+      window.clearInterval(messagesTimer);
+    };
+  }, [user, selectedUserId]);
 
   const loadUsers = async () => {
     try {
