@@ -235,10 +235,6 @@ export default function ForumTopicPage() {
                 </div>
 
                 <div className="flex items-center gap-4 pt-4">
-                  <button className="flex items-center gap-2 text-sm font-medium text-stone-500 hover:text-emerald-600 transition-colors">
-                    <ThumbsUp className="h-4 w-4" />
-                    Полезно
-                  </button>
                 </div>
               </div>
             </div>
