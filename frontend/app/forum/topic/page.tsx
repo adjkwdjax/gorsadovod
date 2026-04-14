@@ -184,10 +184,6 @@ export default function ForumTopicPage() {
                     : 'Подписаться на уведомления'}
                 </button>
                 <button className="flex items-center gap-2 text-sm font-medium text-stone-500 hover:text-emerald-600 transition-colors">
-                  <ThumbsUp className="h-4 w-4" />
-                  Полезно
-                </button>
-                <button className="flex items-center gap-2 text-sm font-medium text-stone-500 hover:text-emerald-600 transition-colors">
                   <Reply className="h-4 w-4" />
                   Ответить
                 </button>

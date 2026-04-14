@@ -21,7 +21,8 @@ docker compose up --build
 - `docker compose up` - запускаем без пересборки
 - `docker compose down` - останавливаем и удаляем контейнеры
 - `docker compose logs -f backend` - смотрим логи backend в реальном времени
-- `docker compose run --rm backend python manage.py migrate` - запускаем миграции вручную
+- `docker compose run --rm backend python manage.py migrate` - запускаем миграции 
+- `docker compose exec backend python manage.py createsuperuser` - создаем суперпользователя django 
 
 ### вариант 2: локально без docker
 
