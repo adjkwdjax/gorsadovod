@@ -1,7 +1,9 @@
 from django.contrib import admin
 from .models import (
 	Article,
+	CalendarSeasonWork,
 	Club,
+	ClubMessage,
 	DiaryEntry,
 	DiaryPlant,
 	DirectMessage,
@@ -108,6 +110,14 @@ class ClubAdmin(admin.ModelAdmin):
 	readonly_fields = ("created_at", "updated_at")
 
 
+@admin.register(ClubMessage)
+class ClubMessageAdmin(admin.ModelAdmin):
+	list_display = ("club", "author", "created_at")
+	list_filter = ("created_at",)
+	search_fields = ("club__name", "author__username", "author__email", "content")
+	readonly_fields = ("created_at", "updated_at")
+
+
 @admin.register(DiaryPlant)
 class DiaryPlantAdmin(admin.ModelAdmin):
 	list_display = ("name", "user", "updated_at", "created_at")
@@ -130,3 +140,10 @@ class MapPointAdmin(admin.ModelAdmin):
 	list_filter = ("point_type", "created_at")
 	search_fields = ("title", "description", "author__username", "author__email")
 	readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(CalendarSeasonWork)
+class CalendarSeasonWorkAdmin(admin.ModelAdmin):
+	list_display = ("season", "months", "display_order", "updated_at")
+	list_editable = ("display_order",)
+	search_fields = ("season", "months")

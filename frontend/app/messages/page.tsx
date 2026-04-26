@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { messageService } from '@/services/api';
 import { Dialog, Message, User } from '@/types/api';
-import { Search, Send, User as UserIcon, Plus, X } from 'lucide-react';
+import { Search, Send, Trash2, User as UserIcon, Plus, X } from 'lucide-react';
 import { cn } from '@/components/layout/AppLayout';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
@@ -18,6 +18,8 @@ export default function MessagesPage() {
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [messageContent, setMessageContent] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [isClearingConversation, setIsClearingConversation] = useState(false);
 
   const router = useRouter();
   const { user } = useAuthStore();
@@ -146,6 +148,50 @@ export default function MessagesPage() {
       await loadDialogs();
     } catch (error) {
       console.error('Failed to send message:', error);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string, scope: 'self' | 'all' = 'self') => {
+    if (!selectedUserId) return;
+
+    const shouldDelete = window.confirm(
+      scope === 'all'
+        ? 'Удалить это сообщение у всех участников диалога?'
+        : 'Удалить это сообщение только у вас?'
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setDeletingMessageId(messageId);
+      await messageService.deleteMessage(selectedUserId, messageId, scope);
+      setMessages((prev) => prev.filter((message) => message.id !== messageId));
+      await loadDialogs(true);
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+    } finally {
+      setDeletingMessageId(null);
+    }
+  };
+
+  const handleClearConversation = async () => {
+    if (!selectedUserId) return;
+
+    const shouldClear = window.confirm('Удалить всю переписку в этом диалоге только у вас?');
+    if (!shouldClear) {
+      return;
+    }
+
+    try {
+      setIsClearingConversation(true);
+      await messageService.clearConversation(selectedUserId);
+      setMessages([]);
+      await loadDialogs(true);
+    } catch (error) {
+      console.error('Failed to clear conversation:', error);
+    } finally {
+      setIsClearingConversation(false);
     }
   };
 
@@ -349,6 +395,14 @@ export default function MessagesPage() {
                   <p className="text-xs text-emerald-600 font-medium">Активен</p>
                 </div>
               </div>
+              <button
+                onClick={handleClearConversation}
+                disabled={isClearingConversation}
+                className="px-3 py-2 text-sm font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 disabled:text-stone-400 disabled:bg-stone-100 rounded-xl transition-colors flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isClearingConversation ? 'Удаляем...' : 'Удалить переписку'}
+              </button>
             </div>
 
             {/* Messages List */}
@@ -362,41 +416,71 @@ export default function MessagesPage() {
                   <p className="text-stone-400">Нет сообщений. Начните разговор!</p>
                 </div>
               ) : (
-                messages.map((msg) => (
-                  <div key={msg.id} className={cn(
-                    "flex gap-4",
-                    msg.senderId === selectedUserId ? "justify-start" : "justify-end"
-                  )}>
-                    {msg.senderId === selectedUserId && (
-                      <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0 mt-auto">
-                        <UserIcon className="h-4 w-4" />
-                      </div>
-                    )}
-                    <div className={cn(
-                      "max-w-[60%] space-y-1",
-                      msg.senderId === selectedUserId ? "" : "items-end flex flex-col"
+                messages.map((msg) => {
+                  const isIncoming = msg.senderId === selectedUserId;
+                  const canDelete = msg.senderId === user.id;
+                  const isDeletingCurrent = deletingMessageId === msg.id;
+
+                  return (
+                    <div key={msg.id} className={cn(
+                      "flex gap-4",
+                      isIncoming ? "justify-start" : "justify-end"
                     )}>
+                      {isIncoming && (
+                        <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0 mt-auto">
+                          <UserIcon className="h-4 w-4" />
+                        </div>
+                      )}
                       <div className={cn(
-                        "p-4 rounded-2xl shadow-sm",
-                        msg.senderId === selectedUserId
-                          ? "bg-white border border-stone-200 rounded-bl-sm"
-                          : "bg-emerald-600 text-white rounded-br-sm"
+                        "max-w-[60%] space-y-1",
+                        isIncoming ? "" : "items-end flex flex-col"
                       )}>
-                        <p className="text-sm leading-relaxed">
-                          {msg.content}
-                        </p>
+                        <div className={cn(
+                          "p-4 rounded-2xl shadow-sm",
+                          isIncoming
+                            ? "bg-white border border-stone-200 rounded-bl-sm"
+                            : "bg-emerald-600 text-white rounded-br-sm"
+                        )}>
+                          <p className="text-sm leading-relaxed">
+                            {msg.content}
+                          </p>
+                        </div>
+                        <div className={cn(
+                          "flex items-center gap-2 px-1",
+                          isIncoming ? "" : "justify-end"
+                        )}>
+                          <span className="text-xs text-stone-400">
+                            {formatDate(msg.createdAt)}
+                          </span>
+                          {canDelete && (
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => handleDeleteMessage(msg.id)}
+                                disabled={isDeletingCurrent}
+                                className="text-xs text-rose-600 hover:text-rose-700 disabled:text-stone-400 transition-colors flex items-center gap-1"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {isDeletingCurrent ? 'Удаляем...' : 'У себя'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMessage(msg.id, 'all')}
+                                disabled={isDeletingCurrent}
+                                className="text-xs text-rose-700 hover:text-rose-800 disabled:text-stone-400 transition-colors"
+                              >
+                                У всех
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-xs text-stone-400 px-1">
-                        {formatDate(msg.createdAt)}
-                      </span>
+                      {!isIncoming && (
+                        <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0 mt-auto">
+                          <UserIcon className="h-4 w-4" />
+                        </div>
+                      )}
                     </div>
-                    {msg.senderId !== selectedUserId && (
-                      <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0 mt-auto">
-                        <UserIcon className="h-4 w-4" />
-                      </div>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 

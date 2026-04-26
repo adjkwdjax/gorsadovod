@@ -8,13 +8,16 @@ from django.contrib.sessions.models import Session
 from django.utils import timezone
 from django.utils.text import slugify
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from django.db.models import Avg, Count, Q
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from .models import (
     Article,
+    CalendarSeasonWork,
     Club,
+    ClubMessage,
     DiaryEntry,
     DiaryPlant,
     DirectMessage,
@@ -237,6 +240,17 @@ def _club_detail_payload(club, current_user=None):
     return base
 
 
+def _club_message_payload(message):
+    return {
+        "id": str(message.id),
+        "clubId": str(message.club_id),
+        "authorId": str(message.author_id),
+        "authorName": message.author.get_full_name().strip() or message.author.get_username(),
+        "content": message.content,
+        "createdAt": message.created_at.isoformat(),
+    }
+
+
 def _diary_entry_payload(entry):
     return {
         "id": str(entry.id),
@@ -330,6 +344,76 @@ def _generate_article_slug(title):
         index += 1
 
     return slug
+
+
+DEFAULT_CALENDAR_RESULTS = [
+    {
+        "season": "Весна",
+        "months": "Март - Май",
+        "tasks": [
+            "Посев рассады: томаты, перцы, зелень.",
+            "Подготовка грунта и емкостей для посадки.",
+            "Высадка холодостойких культур на балкон.",
+            "Первая подкормка рассады и профилактика вредителей.",
+        ],
+    },
+    {
+        "season": "Лето",
+        "months": "Июнь - Август",
+        "tasks": [
+            "Регулярный полив утром или вечером.",
+            "Подкормка растений каждые 2-3 недели.",
+            "Пасынкование и подвязка томатов.",
+            "Сбор урожая зелени, огурцов и томатов.",
+        ],
+    },
+    {
+        "season": "Осень",
+        "months": "Сентябрь - Ноябрь",
+        "tasks": [
+            "Уборка последних культур и подготовка к хранению.",
+            "Сбор и сортировка семян на следующий сезон.",
+            "Обработка почвы и дезинфекция контейнеров.",
+            "Посев микрозелени и салатов для дома.",
+        ],
+    },
+    {
+        "season": "Зима",
+        "months": "Декабрь - Февраль",
+        "tasks": [
+            "Планирование посадок и закупка семян.",
+            "Проверка условий хранения урожая и посадочного материала.",
+            "Уход за комнатными растениями и досветка.",
+            "Подготовка инвентаря к новому сезону.",
+        ],
+    },
+]
+
+
+def _calendar_results_payload():
+    rows = list(CalendarSeasonWork.objects.order_by("display_order", "id"))
+    if not rows:
+        return [
+            {
+                "season": item["season"],
+                "months": item["months"],
+                "tasks": list(item["tasks"]),
+            }
+            for item in DEFAULT_CALENDAR_RESULTS
+        ]
+
+    return [
+        {
+            "season": row.season,
+            "months": row.months,
+            "tasks": row.tasks if isinstance(row.tasks, list) else [],
+        }
+        for row in rows
+    ]
+
+
+def _calendar_can_edit(user):
+    return bool(user and user.is_authenticated and user.is_staff)
 
 
 @api_view(["GET"])
@@ -534,7 +618,7 @@ def articles_list(request):
     return Response(_article_payload(article), status=status.HTTP_201_CREATED)
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @renderer_classes([JSONRenderer])
 def article_detail(request, slug):
     article = get_object_or_404(
@@ -542,13 +626,114 @@ def article_detail(request, slug):
         slug=slug,
     )
 
-    return Response(_article_payload(article))
+    if request.method == "GET":
+        return Response(_article_payload(article))
+
+    current_user = _resolve_request_user(request)
+    if not current_user:
+        return Response(
+            {"detail": "Authentication credentials were not provided."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if not article.author_id or article.author_id != current_user.id:
+        return Response(
+            {"detail": "You can delete only your own articles."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    article.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@api_view(["GET"])
+@api_view(["GET", "PUT"])
 @renderer_classes([JSONRenderer])
 def calendar_list(request):
-    return Response(_stub("calendar_list", results=[]))
+    current_user = _resolve_request_user(request)
+
+    if request.method == "GET":
+        return Response(
+            {
+                "results": _calendar_results_payload(),
+                "canEdit": _calendar_can_edit(current_user),
+            }
+        )
+
+    if not current_user:
+        return Response(
+            {"detail": "Authentication credentials were not provided."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if not current_user.is_staff:
+        return Response(
+            {"detail": "You do not have permission to edit calendar."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    raw_results = request.data.get("results", request.data)
+    if not isinstance(raw_results, list) or not raw_results:
+        return Response(
+            {"detail": "Results must be a non-empty list."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    normalized_results = []
+    season_keys = set()
+    for index, item in enumerate(raw_results):
+        if not isinstance(item, dict):
+            return Response(
+                {"detail": "Each calendar item must be an object."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        season = str(item.get("season") or "").strip()
+        months = str(item.get("months") or "").strip()
+        raw_tasks = item.get("tasks")
+
+        if not season:
+            return Response({"detail": "Season is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not months:
+            return Response({"detail": "Months are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not isinstance(raw_tasks, list):
+            return Response({"detail": "Tasks must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+
+        tasks = [str(task).strip() for task in raw_tasks if str(task).strip()]
+        if not tasks:
+            return Response(
+                {"detail": "Each season must contain at least one task."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        season_key = season.lower()
+        if season_key in season_keys:
+            return Response(
+                {"detail": "Season names must be unique."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        season_keys.add(season_key)
+
+        normalized_results.append(
+            CalendarSeasonWork(
+                season=season,
+                months=months,
+                tasks=tasks,
+                display_order=index,
+            )
+        )
+
+    with transaction.atomic():
+        CalendarSeasonWork.objects.all().delete()
+        CalendarSeasonWork.objects.bulk_create(normalized_results)
+
+    return Response(
+        {
+            "results": _calendar_results_payload(),
+            "canEdit": True,
+        }
+    )
 
 
 @api_view(["GET"])
@@ -622,6 +807,70 @@ def club_leave(request, pk):
     club.members.remove(current_user)
     club = Club.objects.select_related("author").prefetch_related("members").get(pk=club.pk)
     return Response(_club_detail_payload(club, current_user=current_user))
+
+
+@api_view(["GET", "POST"])
+@renderer_classes([JSONRenderer])
+def club_messages(request, pk):
+    current_user = _resolve_request_user(request)
+    if not current_user:
+        return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
+    club = get_object_or_404(Club.objects.prefetch_related("members"), pk=pk)
+    is_member = club.members.filter(pk=current_user.pk).exists()
+    if not is_member:
+        return Response({"detail": "You must be a club member to use chat."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        messages = ClubMessage.objects.filter(club=club).select_related("author")
+        return Response([_club_message_payload(message) for message in messages])
+
+    content = (request.data.get("content") or "").strip()
+    if not content:
+        return Response({"detail": "Content is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    message = ClubMessage.objects.create(
+        club=club,
+        author=current_user,
+        content=content,
+    )
+    message = ClubMessage.objects.select_related("author").get(pk=message.pk)
+    return Response(_club_message_payload(message), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@renderer_classes([JSONRenderer])
+def club_message_detail(request, pk, message_id):
+    current_user = _resolve_request_user(request)
+    if not current_user:
+        return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
+    club = get_object_or_404(Club.objects.prefetch_related("members"), pk=pk)
+    is_member = club.members.filter(pk=current_user.pk).exists()
+    if not is_member:
+        return Response({"detail": "You must be a club member to use chat."}, status=status.HTTP_403_FORBIDDEN)
+
+    message = get_object_or_404(
+        ClubMessage.objects.select_related("author"),
+        pk=message_id,
+        club=club,
+    )
+
+    if message.author_id != current_user.id:
+        return Response(
+            {"detail": "You can delete only your own messages."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    scope = (request.query_params.get("scope") or "all").strip().lower()
+    if scope != "all":
+        return Response(
+            {"detail": "Only scope=all is supported for club messages."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    message.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["GET", "POST"])
@@ -1296,14 +1545,12 @@ def users_list(request):
 @renderer_classes([JSONRenderer])
 def dialogs_list(request):
     user = request.user
-    
-    # Get all users this user has messaged or been messaged by
-    User = get_user_model()
+
     conversations = DirectMessage.objects.filter(
-        Q(sender=user) | Q(recipient=user)
+        Q(sender=user, deleted_by_sender=False)
+        | Q(recipient=user, deleted_by_recipient=False)
     ).select_related("sender", "recipient").order_by("-created_at")
-    
-    # Group by conversation partner
+
     dialogs = {}
     for msg in conversations:
         partner = msg.recipient if msg.sender_id == user.id else msg.sender
@@ -1316,49 +1563,109 @@ def dialogs_list(request):
                 "unreadCount": DirectMessage.objects.filter(
                     sender=partner,
                     recipient=user,
-                    is_read=False
+                    is_read=False,
+                    deleted_by_recipient=False,
                 ).count(),
             }
-    
+
     return Response(list(dialogs.values()))
 
 
-@api_view(["GET", "POST"])
+@api_view(["GET", "POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 @renderer_classes([JSONRenderer])
 def messages_with_user(request, user_id):
     user = request.user
     User = get_user_model()
-    
+
     recipient = get_object_or_404(User, pk=user_id)
-    
+
     if request.method == "GET":
         messages = DirectMessage.objects.filter(
-            Q(sender=user, recipient=recipient) | Q(sender=recipient, recipient=user)
+            Q(sender=user, recipient=recipient, deleted_by_sender=False)
+            | Q(sender=recipient, recipient=user, deleted_by_recipient=False)
         ).select_related("sender", "recipient").order_by("created_at")
-        
-        # Mark messages as read
+
         DirectMessage.objects.filter(
             sender=recipient,
             recipient=user,
-            is_read=False
+            is_read=False,
+            deleted_by_recipient=False,
         ).update(is_read=True)
-        
+
         return Response([_direct_message_payload(msg) for msg in messages])
-    
-    # POST - send message
+
+    if request.method == "DELETE":
+        deleted_outgoing = DirectMessage.objects.filter(
+            sender=user,
+            recipient=recipient,
+            deleted_by_sender=False,
+        ).update(
+            deleted_by_sender=True,
+            updated_at=timezone.now(),
+        )
+        deleted_incoming = DirectMessage.objects.filter(
+            sender=recipient,
+            recipient=user,
+            deleted_by_recipient=False,
+        ).update(
+            deleted_by_recipient=True,
+            updated_at=timezone.now(),
+        )
+
+        return Response(
+            {"deletedCount": deleted_outgoing + deleted_incoming},
+            status=status.HTTP_200_OK,
+        )
+
     content = (request.data.get("content") or "").strip()
     if not content:
         return Response(
             {"detail": "Content is required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    
+
     message = DirectMessage.objects.create(
         sender=user,
         recipient=recipient,
         content=content,
     )
     message = DirectMessage.objects.select_related("sender", "recipient").get(pk=message.pk)
-    
+
     return Response(_direct_message_payload(message), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+@renderer_classes([JSONRenderer])
+def message_with_user_detail(request, user_id, message_id):
+    user = request.user
+    User = get_user_model()
+
+    partner = get_object_or_404(User, pk=user_id)
+    message = get_object_or_404(DirectMessage, pk=message_id)
+
+    in_current_dialog = (
+        (message.sender_id == user.id and message.recipient_id == partner.id)
+        or (message.sender_id == partner.id and message.recipient_id == user.id)
+    )
+    if not in_current_dialog:
+        return Response({"detail": "Message not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if message.sender_id != user.id:
+        return Response(
+            {"detail": "You can delete only your own messages."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    scope = (request.query_params.get("scope") or "self").strip().lower()
+    if scope == "all":
+        message.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    if message.deleted_by_sender:
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    message.deleted_by_sender = True
+    message.save(update_fields=["deleted_by_sender", "updated_at"])
+    return Response(status=status.HTTP_204_NO_CONTENT)

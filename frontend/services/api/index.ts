@@ -1,4 +1,4 @@
-import { AuthResponse, BlogPost, Club, ClubDetail, CreateBlogPostPayload, DiaryPlant, DiaryPlantDetail, DiaryPlantEntry, Dialog, ForumNotification, ForumReply, ForumTopic, MapLocation, MarketplaceAd, Message, TradeExchange, TradeReview, User } from '@/types/api';
+import { AuthResponse, BlogPost, CalendarResponse, CalendarSeasonWork, Club, ClubChatMessage, ClubDetail, CreateBlogPostPayload, DiaryPlant, DiaryPlantDetail, DiaryPlantEntry, Dialog, ForumNotification, ForumReply, ForumTopic, MapLocation, MarketplaceAd, Message, TradeExchange, TradeReview, User } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -100,6 +100,23 @@ export const blogService = {
       body: JSON.stringify(payload),
     });
   },
+  deletePost: async (slug: string): Promise<void> => {
+    await fetchApi(`/articles/${slug}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+export const calendarService = {
+  getCalendar: async (): Promise<CalendarResponse> => {
+    return fetchApi<CalendarResponse>('/calendar/');
+  },
+  updateCalendar: async (payload: { results: CalendarSeasonWork[] }): Promise<CalendarResponse> => {
+    return fetchApi<CalendarResponse>('/calendar/', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 export const forumService = {
@@ -113,6 +130,11 @@ export const forumService = {
     return fetchApi<ForumTopic>('/topics/', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  deleteTopic: async (topicId: string): Promise<void> => {
+    await fetchApi(`/topics/${topicId}/`, {
+      method: 'DELETE',
     });
   },
   getPosts: async (topicId: string): Promise<ForumReply[]> => {
@@ -247,6 +269,17 @@ export const messageService = {
       body: JSON.stringify(payload),
     });
   },
+  deleteMessage: async (userId: string, messageId: string, scope: 'self' | 'all' = 'self'): Promise<void> => {
+    const query = scope === 'all' ? '?scope=all' : '';
+    await fetchApi(`/messages/${userId}/${messageId}/${query}`, {
+      method: 'DELETE',
+    });
+  },
+  clearConversation: async (userId: string): Promise<void> => {
+    await fetchApi(`/messages/${userId}/`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 export const exchangeService = {
@@ -306,6 +339,20 @@ export const clubService = {
     return fetchApi<ClubDetail>(`/clubs/${clubId}/leave/`, {
       method: 'POST',
       body: JSON.stringify({}),
+    });
+  },
+  getMessages: async (clubId: string): Promise<ClubChatMessage[]> => {
+    return fetchApi<ClubChatMessage[]>(`/clubs/${clubId}/messages/`);
+  },
+  sendMessage: async (clubId: string, payload: { content: string }): Promise<ClubChatMessage> => {
+    return fetchApi<ClubChatMessage>(`/clubs/${clubId}/messages/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteMessage: async (clubId: string, messageId: string, scope: 'all' = 'all'): Promise<void> => {
+    await fetchApi(`/clubs/${clubId}/messages/${messageId}/${scope === 'all' ? '?scope=all' : ''}`, {
+      method: 'DELETE',
     });
   },
 };

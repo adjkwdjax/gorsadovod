@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { blogService } from '@/services/api';
 import { BlogPost } from '@/types/api';
-import { Search, Calendar, User, Plus, Loader2 } from 'lucide-react';
+import { Search, Calendar, User, Plus, Loader2, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
 
@@ -14,6 +14,7 @@ export default function BlogPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [newPost, setNewPost] = useState({
     title: '',
     excerpt: '',
@@ -102,6 +103,29 @@ export default function BlogPage() {
     }
   };
 
+  const handleDeletePost = async (event: React.MouseEvent<HTMLButtonElement>, post: BlogPost) => {
+    event.stopPropagation();
+
+    if (!user || post.authorId !== user.id) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Удалить статью "${post.title}"?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setDeletingPostId(post.id);
+      await blogService.deletePost(post.id);
+      setPosts((prev) => prev.filter((item) => item.id !== post.id));
+    } catch (error) {
+      console.error('Failed to delete post:', error);
+    } finally {
+      setDeletingPostId(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -129,7 +153,7 @@ export default function BlogPage() {
           <div>
             <h2 className="text-xl font-semibold text-stone-900">Предложить статью</h2>
             <p className="text-sm text-stone-600">
-              Публикация доступна всем. Для гостей достаточно указать имя автора.
+              Публикация доступна всем.
             </p>
           </div>
           <button
@@ -282,6 +306,18 @@ export default function BlogPage() {
                     </time>
                   </div>
                 </div>
+                {user && post.authorId === user.id && (
+                  <div className="pt-3 mt-3 border-t border-stone-100 flex justify-end">
+                    <button
+                      onClick={(event) => handleDeletePost(event, post)}
+                      disabled={deletingPostId === post.id}
+                      className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 disabled:text-stone-400 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deletingPostId === post.id ? 'Удаление...' : 'Удалить статью'}
+                    </button>
+                  </div>
+                )}
               </div>
             </article>
           ))}

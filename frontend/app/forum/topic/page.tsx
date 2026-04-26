@@ -3,9 +3,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { forumService } from '@/services/api';
 import { ForumTopic, ForumReply } from '@/types/api';
-import { User, Clock, ArrowLeft, MessageSquare, ThumbsUp, Reply, Mail, Bell, BellOff } from 'lucide-react';
+import { User, Clock, ArrowLeft, MessageSquare, Reply, Mail, Bell, BellOff, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/auth';
 
 export default function ForumTopicPage() {
   const [topicId, setTopicId] = useState('');
@@ -15,7 +16,9 @@ export default function ForumTopicPage() {
   const [newReply, setNewReply] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [deletingTopic, setDeletingTopic] = useState(false);
   const router = useRouter();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -80,7 +83,44 @@ export default function ForumTopicPage() {
   };
 
   const handleSendMessage = (userId: string) => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
     router.push(`/messages?user=${userId}`);
+  };
+
+  const handleDeleteTopic = async () => {
+    if (!topic || !topicId || deletingTopic) {
+      return;
+    }
+
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    if (user.id !== topic.authorId) {
+      alert('Удалить тему может только автор.');
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Удалить тему "${topic.title}"?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingTopic(true);
+    try {
+      await forumService.deleteTopic(topicId);
+      router.push('/forum');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось удалить тему.';
+      alert(message);
+    } finally {
+      setDeletingTopic(false);
+    }
   };
 
   const handleToggleSubscription = async () => {
@@ -187,13 +227,25 @@ export default function ForumTopicPage() {
                   <Reply className="h-4 w-4" />
                   Ответить
                 </button>
-                <button
-                  onClick={() => handleSendMessage(topic.authorId)}
-                  className="flex items-center gap-2 text-sm font-medium text-stone-500 hover:text-emerald-600 transition-colors ml-auto"
-                >
-                  <Mail className="h-4 w-4" />
-                  Написать в ЛС
-                </button>
+                {user?.id !== topic.authorId && (
+                  <button
+                    onClick={() => handleSendMessage(topic.authorId)}
+                    className="flex items-center gap-2 text-sm font-medium text-stone-500 hover:text-emerald-600 transition-colors ml-auto"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Написать в ЛС
+                  </button>
+                )}
+                {user?.id === topic.authorId && (
+                  <button
+                    onClick={handleDeleteTopic}
+                    disabled={deletingTopic}
+                    className="flex items-center gap-2 text-sm font-medium text-rose-600 hover:text-rose-700 transition-colors ml-auto disabled:opacity-60"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deletingTopic ? 'Удаление...' : 'Удалить тему'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

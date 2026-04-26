@@ -13,6 +13,17 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface CalendarSeasonWork {
+  season: string;
+  months: string;
+  tasks: string[];
+}
+
+export interface CalendarResponse {
+  results: CalendarSeasonWork[];
+  canEdit: boolean;
+}
+
 export interface BlogPost {
   id: string;
   title: string;
@@ -142,6 +153,15 @@ export interface ClubMember {
 
 export interface ClubDetail extends Club {
   members: ClubMember[];
+}
+
+export interface ClubChatMessage {
+  id: string;
+  clubId: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
 }
 
 export interface MapLocation {

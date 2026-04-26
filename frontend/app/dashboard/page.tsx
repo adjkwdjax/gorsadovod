@@ -3,9 +3,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
-import { profileService } from '@/services/api';
-import { TradeReview } from '@/types/api';
-import { User, Star, X } from 'lucide-react';
+import { blogService, profileService } from '@/services/api';
+import { BlogPost, TradeReview } from '@/types/api';
+import { Trash2, User, Star, X } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DashboardPage() {
@@ -17,6 +17,9 @@ export default function DashboardPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [reviews, setReviews] = useState<TradeReview[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [myPosts, setMyPosts] = useState<BlogPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState({
     username: '',
     email: '',
@@ -34,21 +37,44 @@ export default function DashboardPage() {
     const loadProfileAndReviews = async () => {
       try {
         setReviewsLoading(true);
-        const [freshUser, reviewsData] = await Promise.all([
+        setPostsLoading(true);
+        const [freshUser, reviewsData, postsData] = await Promise.all([
           profileService.getPublicProfile(user.id),
           profileService.getReviews(user.id),
+          blogService.getPosts(),
         ]);
         updateUser(freshUser);
         setReviews(reviewsData);
+        setMyPosts(postsData.filter((post) => post.authorId === user.id));
       } catch (error) {
         console.error('Failed to load profile or reviews:', error);
       } finally {
         setReviewsLoading(false);
+        setPostsLoading(false);
       }
     };
 
     loadProfileAndReviews();
   }, [user?.id]);
+
+  const handleDeletePost = async (post: BlogPost) => {
+    const shouldDelete = window.confirm(`Удалить статью "${post.title}"?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setDeletingPostId(post.id);
+      await blogService.deletePost(post.id);
+      setMyPosts((prev) => prev.filter((item) => item.id !== post.id));
+      setSuccessMessage('Статья удалена.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось удалить статью.';
+      setErrorMessage(message);
+    } finally {
+      setDeletingPostId(null);
+    }
+  };
 
   const openModal = () => {
     if (!user) return;
@@ -177,6 +203,44 @@ export default function DashboardPage() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 mt-6">
+              <h3 className="text-lg font-semibold text-stone-900 mb-4">Мои статьи</h3>
+              {postsLoading ? (
+                <p className="text-sm text-stone-500">Загрузка статей...</p>
+              ) : myPosts.length === 0 ? (
+                <p className="text-sm text-stone-500">Вы еще не публиковали статьи.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myPosts.map((post) => {
+                    const isDeleting = deletingPostId === post.id;
+                    return (
+                      <div key={post.id} className="border border-stone-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <Link
+                            href={`/blog/post?id=${post.id}`}
+                            className="text-sm font-medium text-stone-900 hover:text-emerald-700 transition-colors line-clamp-2"
+                          >
+                            {post.title}
+                          </Link>
+                          <button
+                            onClick={() => handleDeletePost(post)}
+                            disabled={isDeleting}
+                            className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 disabled:text-stone-400 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {isDeleting ? 'Удаление...' : 'Удалить'}
+                          </button>
+                        </div>
+                        <p className="text-xs text-stone-500 mt-2">
+                          {new Date(post.createdAt).toLocaleDateString('ru-RU')}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

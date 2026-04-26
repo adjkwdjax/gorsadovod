@@ -147,6 +147,8 @@ class DirectMessage(models.Model):
     )
     content = models.TextField()
     is_read = models.BooleanField(default=False)
+    deleted_by_sender = models.BooleanField(default=False)
+    deleted_by_recipient = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -280,6 +282,28 @@ class Club(models.Model):
         return self.name
 
 
+class ClubMessage(models.Model):
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="club_messages",
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("created_at",)
+
+    def __str__(self):
+        return f"club={self.club_id} author={self.author_id}"
+
+
 class DiaryPlant(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -317,6 +341,20 @@ class DiaryEntry(models.Model):
 
     class Meta:
         ordering = ("-entry_date", "-created_at")
+
+
+class CalendarSeasonWork(models.Model):
+    season = models.CharField(max_length=50, unique=True)
+    months = models.CharField(max_length=100)
+    tasks = models.JSONField(default=list, blank=True)
+    display_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("display_order", "id")
+
+    def __str__(self):
+        return self.season
 
     def __str__(self):
         return f"{self.plant.name} - {self.entry_date}"

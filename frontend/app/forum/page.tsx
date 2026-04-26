@@ -7,9 +7,11 @@ import { MessageSquare, Users, Clock, Search, PlusCircle, Bell } from 'lucide-re
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useAuthStore } from '@/store/auth';
 
 export default function ForumPage() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const [topics, setTopics] = useState<ForumTopic[]>([]);
   const [notifications, setNotifications] = useState<ForumNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +22,9 @@ export default function ForumPage() {
   const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
-    const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('auth-token'));
     let active = true;
+
+    setLoading(true);
 
     async function loadData() {
       try {
@@ -35,7 +38,7 @@ export default function ForumPage() {
         }
       }
 
-      if (hasToken) {
+      if (user) {
         try {
           const notificationsData = await forumService.getNotifications();
           if (active) {
@@ -60,7 +63,7 @@ export default function ForumPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   const formatDate = (dateString: string) => {
     return new Intl.DateTimeFormat('ru-RU', {
@@ -72,6 +75,11 @@ export default function ForumPage() {
 
   const handleCreateTopic = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!user) {
+      router.push('/login');
+      return;
+    }
 
     const title = newTitle.trim();
     const description = newDescription.trim();
@@ -93,6 +101,15 @@ export default function ForumPage() {
     } finally {
       setCreatingTopic(false);
     }
+  };
+
+  const handleOpenCreate = () => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    setIsCreateOpen(true);
   };
 
   const handleNotificationClick = async (notification: ForumNotification) => {
@@ -130,7 +147,10 @@ export default function ForumPage() {
 
           <Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <Dialog.Trigger asChild>
-              <button className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap">
+              <button
+                onClick={handleOpenCreate}
+                className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap"
+              >
                 <PlusCircle className="h-5 w-5 mr-2" />
                 Новая тема
               </button>
@@ -145,7 +165,7 @@ export default function ForumPage() {
                       Новая тема
                     </Dialog.Title>
                     <Dialog.Description className="mt-1 text-sm text-stone-500">
-                      Создайте тему для обсуждения на форуме.
+                      Создайте тему для обсуждения на форуме. Автор будет определен автоматически.
                     </Dialog.Description>
                   </div>
 

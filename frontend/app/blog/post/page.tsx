@@ -3,14 +3,19 @@
 import { useEffect, useState } from 'react';
 import { blogService } from '@/services/api';
 import { BlogPost } from '@/types/api';
-import { Calendar, User, ArrowLeft, Share2, Bookmark } from 'lucide-react';
+import { Calendar, User, ArrowLeft, Share2, Bookmark, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/auth';
 
 export default function BlogPostPage() {
   const [postId, setPostId] = useState('');
 
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -44,6 +49,27 @@ export default function BlogPostPage() {
       month: 'long',
       year: 'numeric'
     }).format(new Date(dateString));
+  };
+
+  const handleDeletePost = async () => {
+    if (!post || !user || post.authorId !== user.id) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Удалить статью "${post.title}"?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await blogService.deletePost(post.id);
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Failed to delete post:', error);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (loading) {
@@ -128,6 +154,17 @@ export default function BlogPostPage() {
             <button className="p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">
               <Share2 className="h-5 w-5" />
             </button>
+            {user && post.authorId === user.id && (
+              <button
+                onClick={handleDeletePost}
+                disabled={isDeleting}
+                className="p-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-full transition-colors disabled:text-stone-400"
+                title="Удалить статью"
+                aria-label="Удалить статью"
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
